@@ -1,5 +1,5 @@
 const express = require('express');
-const { default: makeWASocket, useMultiFileAuthState, DisconnectReason } = require('@whiskeysockets/baileys');
+const { default: makeWASocket, useMultiFileAuthState, DisconnectReason, fetchLatestBaileysVersion } = require('@whiskeysockets/baileys');
 const QRCode = require('qrcode');
 const pino = require('pino');
 
@@ -14,12 +14,16 @@ let isConnected = false;
 
 async function connectToWhatsApp() {
     const { state, saveCreds } = await useMultiFileAuthState('auth_info_baileys');
+    
+    // Obtener la versión de protocolo más reciente de WhatsApp
+    const { version } = await fetchLatestBaileysVersion();
 
     sock = makeWASocket({
+        version,
         auth: state,
         printQRInTerminal: false,
         logger: pino({ level: 'silent' }),
-        browser: ["Ubuntu", "Chrome", "20.0.04"]
+        browser: ["Chrome (Linux)", "Chrome", "120.0.0.0"]
     });
 
     sock.ev.on('creds.update', saveCreds);
@@ -30,7 +34,7 @@ async function connectToWhatsApp() {
         if (qr) {
             currentQR = qr;
             isConnected = false;
-            console.log('Nuevo código QR disponible en /qr');
+            console.log('Nuevo código QR generado en /qr');
         }
 
         if (connection === 'close') {
@@ -38,38 +42,39 @@ async function connectToWhatsApp() {
             const statusCode = (lastDisconnect?.error)?.output?.statusCode;
             const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
             console.log(`Conexión cerrada (Código ${statusCode}). Reconectando: ${shouldReconnect}`);
+            
             if (shouldReconnect) {
-                setTimeout(connectToWhatsApp, 3000);
+                setTimeout(connectToWhatsApp, 5000);
             }
         } else if (connection === 'open') {
             isConnected = true;
             currentQR = '';
-            console.log('✅ ¡WhatsApp vinculado y conectado!');
+            console.log('✅ ¡WhatsApp conectado exitosamente!');
         }
     });
 }
 
-// Ruta para ver el QR
+// Ruta para escanear el QR
 app.get('/qr', async (req, res) => {
     if (isConnected) {
         return res.send('<h2 style="font-family:sans-serif;color:green;text-align:center;margin-top:50px;">✅ WhatsApp ya está CONECTADO.</h2>');
     }
     
     if (!currentQR) {
-        return res.send('<h2 style="font-family:sans-serif;text-align:center;margin-top:50px;">⏳ Generando código QR... Recarga la página en 5 segundos.</h2>');
+        return res.send('<h2 style="font-family:sans-serif;text-align:center;margin-top:50px;">⏳ Generando código QR, por favor recarga en 5 segundos...</h2>');
     }
 
     try {
         const qrImage = await QRCode.toDataURL(currentQR);
         res.send(`
             <div style="text-align:center;font-family:sans-serif;margin-top:40px;">
-                <h2>Escanear QR con WhatsApp</h2>
+                <h2>Escanear QR con tu WhatsApp</h2>
                 <img src="${qrImage}" style="width:300px;height:300px;" />
                 <p>Abre WhatsApp > Dispositivos vinculados > Vincular un dispositivo</p>
             </div>
         `);
     } catch (err) {
-        res.status(500).send('Error al generar la imagen del QR');
+        res.status(500).send('Error generando la imagen del QR');
     }
 });
 
@@ -88,13 +93,13 @@ app.post('/send-message', async (req, res) => {
         const formattedPhone = phone.replace(/[^0-9]/g, '') + '@s.whatsapp.net';
         await sock.sendMessage(formattedPhone, { text: message });
 
-        res.json({ status: 'success', message: 'Enviado correctamente' });
+        res.json({ status: 'success', message: 'Mensaje enviado' });
     } catch (error) {
         res.status(500).json({ error: error.toString() });
     }
 });
 
 app.listen(PORT, () => {
-    console.log(`Servidor activo en el puerto ${PORT}`);
+    console.log(`Servidor escuchando en puerto ${PORT}`);
     connectToWhatsApp();
 });
