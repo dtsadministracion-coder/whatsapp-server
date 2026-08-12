@@ -103,3 +103,11 @@ app.listen(PORT, () => {
     console.log(`Servidor escuchando en puerto ${PORT}`);
     connectToWhatsApp();
 });
+// MANTENER EL SERVIDOR DESPIERTO (Evita el Sleep Mode de Render)
+const RENDER_URL = "https://whatsapp-server-cdfg.onrender.com";
+
+setInterval(() => {
+    fetch(`${RENDER_URL}/qr`)
+        .then(() => console.log('🔄 Ping automático enviado para mantener el servidor despierto.'))
+        .catch((err) => console.error('Error en autoping:', err.message));
+}, 10 * 60 * 1000); // Se ejecuta cada 10 minutos (10 * 60 * 1000 ms)
